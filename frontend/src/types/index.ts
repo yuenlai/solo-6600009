@@ -1,0 +1,21 @@
+export interface Device {
+  id: string; name: string; lat: number; lng: number;
+  status: 'online' | 'offline' | 'alert'; lastSeen: string;
+  battery: number; temperature: number;
+}
+
+export interface Geofence {
+  id: string; name: string; center: { lat: number; lng: number };
+  radius: number; type: 'circle' | 'polygon';
+  alertOnEnter: boolean; alertOnExit: boolean; color: string;
+}
+
+export interface Alert {
+  id: string; deviceId: string; fenceId: string;
+  type: 'enter' | 'exit' | 'low_battery'; timestamp: string;
+  message: string; acknowledged: boolean;
+}
+
+export interface MqttMessage {
+  topic: string; payload: string; timestamp: string;
+}
