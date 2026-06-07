@@ -5,8 +5,10 @@ export interface Device {
 }
 
 export interface Geofence {
-  id: string; name: string; center: { lat: number; lng: number };
+  id: string; name: string;
+  center: { lat: number; lng: number };
   radius: number; type: 'circle' | 'polygon';
+  paths?: Array<{ lat: number; lng: number }>;
   alertOnEnter: boolean; alertOnExit: boolean; color: string;
 }
 
