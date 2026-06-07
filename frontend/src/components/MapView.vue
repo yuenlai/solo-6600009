@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch, ref, computed } from 'vue';
 import L from 'leaflet';
-import type { LatLng, LeafletMouseEvent, LeafletEvent } from 'leaflet';
+import type { LatLng, LeafletMouseEvent, LeafletEvent, Marker } from 'leaflet';
 import { useIotStore } from '../stores/iot';
 import type { Geofence } from '../types';
 
@@ -58,7 +58,7 @@ function renderFence(fence: Geofence) {
 
   const isSelected = store.selectedFenceId === fence.id;
   const weight = isSelected ? 3 : 2;
-  const dashArray = isSelected ? null : null;
+  const dashArray = undefined;
   const fillOpacity = isSelected ? 0.2 : 0.1;
 
   if (fence.type === 'circle') {
@@ -71,10 +71,18 @@ function renderFence(fence: Geofence) {
       dashArray
     });
     circle.bindPopup(`<b>${fence.name}</b><br>圆形 · ${fence.radius}m<br>${fence.alertOnEnter ? '进入告警 ' : ''}${fence.alertOnExit ? '离开告警' : ''}`);
-    circle.on('click', () => store.selectFence(fence.id));
+    circle.on('click', () => {
+      if (store.editMode === 'none' || store.editMode === 'edit') {
+        store.selectFence(fence.id);
+      }
+    });
+    circle.on('mousedown', (e: LeafletMouseEvent) => {
+      if (store.editMode === 'edit' && isSelected) {
+        handleFenceDragStart(e, fence);
+      }
+    });
 
     if (isSelected) {
-      circle.on('mousedown', (e: LeafletMouseEvent) => handleFenceDragStart(e, fence));
       addEditHandlers(fence, circle);
     }
 
@@ -90,10 +98,18 @@ function renderFence(fence: Geofence) {
       dashArray
     });
     polygon.bindPopup(`<b>${fence.name}</b><br>多边形 · ${fence.paths.length}点<br>${fence.alertOnEnter ? '进入告警 ' : ''}${fence.alertOnExit ? '离开告警' : ''}`);
-    polygon.on('click', () => store.selectFence(fence.id));
+    polygon.on('click', () => {
+      if (store.editMode === 'none' || store.editMode === 'edit') {
+        store.selectFence(fence.id);
+      }
+    });
+    polygon.on('mousedown', (e: LeafletMouseEvent) => {
+      if (store.editMode === 'edit' && isSelected) {
+        handleFenceDragStart(e, fence);
+      }
+    });
 
     if (isSelected) {
-      polygon.on('mousedown', (e: LeafletMouseEvent) => handleFenceDragStart(e, fence));
       addEditHandlers(fence, polygon);
     }
 

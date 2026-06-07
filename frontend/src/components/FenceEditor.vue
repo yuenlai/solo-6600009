@@ -112,7 +112,15 @@ const store = useIotStore();
 
 const colorOptions = ['#4caf50', '#e53935', '#1976d2', '#ff9800', '#9c27b0', '#00bcd4', '#795548', '#607d8b'];
 
-const editingFence = ref<Partial<Geofence>>({});
+const editingFence = ref<Partial<Geofence>>({
+  name: '',
+  color: '#1976d2',
+  alertOnEnter: false,
+  alertOnExit: false,
+  type: 'circle',
+  radius: 100,
+  center: { lat: 0, lng: 0 }
+});
 
 const drawingHint = computed(() => {
   if (store.editMode === 'draw-circle') return '点击地图设置圆心，拖动调整半径';
@@ -122,9 +130,18 @@ const drawingHint = computed(() => {
 
 watch(() => store.selectedFence, (fence) => {
   if (fence) {
-    editingFence.value = { ...fence };
+    editingFence.value = {
+      name: fence.name,
+      color: fence.color,
+      alertOnEnter: fence.alertOnEnter,
+      alertOnExit: fence.alertOnExit,
+      type: fence.type,
+      radius: fence.radius,
+      center: { ...fence.center },
+      paths: fence.paths ? [...fence.paths] : undefined
+    };
   }
-}, { immediate: true });
+}, { immediate: true, deep: true });
 
 function startDrawCircle() {
   store.setEditMode('draw-circle');
