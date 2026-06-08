@@ -28,6 +28,8 @@ const drawingTempMarkers = ref<any[]>([]);
 const drawingPoints = ref<{ lat: number; lng: number }[]>([]);
 const drawingCircleCenter = ref<{ lat: number; lng: number } | null>(null);
 const isDrawingCircleSecondClick = ref(false);
+const isDragging = ref(false);
+const pendingFenceUpdate = ref<{ id: string; updates: Partial<Geofence> } | null>(null);
 
 const modeHint = computed(() => {
   if (store.editMode === 'draw-circle') {
@@ -146,12 +148,12 @@ function clearAllMarkerLayers() {
 function addEditHandlers(fence: Geofence, layer: any) {
   clearAllMarkerLayers();
 
+  let currentCenter = { lat: fence.center.lat, lng: fence.center.lng };
+  let currentRadius = fence.radius;
+  let currentPaths = fence.paths ? [...fence.paths] : [];
+
   if (fence.type === 'circle') {
-    const edgePoint = destinationPoint(
-      { lat: fence.center.lat, lng: fence.center.lng },
-      90,
-      fence.radius
-    );
+    const edgePoint = destinationPoint(currentCenter, 90, currentRadius);
     const radiusMarker = L.marker([edgePoint.lat, edgePoint.lng], {
       icon: vertexIcon,
       draggable: true
@@ -159,41 +161,99 @@ function addEditHandlers(fence: Geofence, layer: any) {
     radiusMarker.addTo(map.value!);
     markerLayers.value.set(fence.id + '-radius', radiusMarker);
 
-    const centerMarker = L.marker([fence.center.lat, fence.center.lng], {
+    const centerMarker = L.marker([currentCenter.lat, currentCenter.lng], {
       icon: tempIcon,
       draggable: true
     });
     centerMarker.addTo(map.value!);
     markerLayers.value.set(fence.id + '-center', centerMarker);
 
+    centerMarker.on('dragstart', () => {
+      isDragging.value = true;
+    });
+
     centerMarker.on('drag', (e: LeafletEvent) => {
       const latlng = (e.target as Marker).getLatLng();
-      store.updateFence(fence.id, {
-        center: { lat: latlng.lat, lng: latlng.lng }
-      });
+      currentCenter = { lat: latlng.lat, lng: latlng.lng };
+      const newEdgePoint = destinationPoint(currentCenter, 90, currentRadius);
+
+      layer.setLatLng([currentCenter.lat, currentCenter.lng]);
+      radiusMarker.setLatLng([newEdgePoint.lat, newEdgePoint.lng]);
+
+      pendingFenceUpdate.value = {
+        id: fence.id,
+        updates: { center: currentCenter }
+      };
+    });
+
+    centerMarker.on('dragend', () => {
+      isDragging.value = false;
+      if (pendingFenceUpdate.value) {
+        store.updateFence(pendingFenceUpdate.value.id, pendingFenceUpdate.value.updates);
+        pendingFenceUpdate.value = null;
+      }
+    });
+
+    radiusMarker.on('dragstart', () => {
+      isDragging.value = true;
     });
 
     radiusMarker.on('drag', (e: LeafletEvent) => {
       const latlng = (e.target as Marker).getLatLng();
-      const center = L.latLng(fence.center.lat, fence.center.lng);
+      const center = L.latLng(currentCenter.lat, currentCenter.lng);
       const radius = map.value!.distance(center, latlng);
-      store.updateFence(fence.id, { radius: Math.max(10, radius) });
+      currentRadius = Math.max(10, radius);
+
+      layer.setRadius(currentRadius);
+
+      pendingFenceUpdate.value = {
+        id: fence.id,
+        updates: { radius: currentRadius }
+      };
+    });
+
+    radiusMarker.on('dragend', () => {
+      isDragging.value = false;
+      if (pendingFenceUpdate.value) {
+        store.updateFence(pendingFenceUpdate.value.id, pendingFenceUpdate.value.updates);
+        pendingFenceUpdate.value = null;
+      }
     });
   } else if (fence.type === 'polygon' && fence.paths) {
-    fence.paths.forEach((point, idx) => {
+    const vertexMarkers: any[] = [];
+
+    currentPaths.forEach((point, idx) => {
       const vertexMarker = L.marker([point.lat, point.lng], {
         icon: vertexIcon,
         draggable: true
       });
       vertexMarker.addTo(map.value!);
       markerLayers.value.set(fence.id + '-v' + idx, vertexMarker);
+      vertexMarkers.push(vertexMarker);
+
+      vertexMarker.on('dragstart', () => {
+        isDragging.value = true;
+      });
 
       vertexMarker.on('drag', (e: LeafletEvent) => {
         const latlng = (e.target as Marker).getLatLng();
-        const newPaths = [...fence.paths!];
-        newPaths[idx] = { lat: latlng.lat, lng: latlng.lng };
-        const center = calculatePolygonCenter(newPaths);
-        store.updateFence(fence.id, { paths: newPaths, center });
+        currentPaths[idx] = { lat: latlng.lat, lng: latlng.lng };
+        const latlngs = currentPaths.map(p => [p.lat, p.lng] as [number, number]);
+        layer.setLatLngs(latlngs);
+
+        const center = calculatePolygonCenter(currentPaths);
+        pendingFenceUpdate.value = {
+          id: fence.id,
+          updates: { paths: [...currentPaths], center }
+        };
+      });
+
+      vertexMarker.on('dragend', () => {
+        isDragging.value = false;
+        if (pendingFenceUpdate.value) {
+          store.updateFence(pendingFenceUpdate.value.id, pendingFenceUpdate.value.updates);
+          pendingFenceUpdate.value = null;
+        }
       });
     });
   }
@@ -220,11 +280,18 @@ function destinationPoint(start: { lat: number; lng: number }, bearing: number, 
 
 let dragStartLatLng: any = null;
 let dragFence: Geofence | null = null;
+let dragCurrentCenter: { lat: number; lng: number } | null = null;
+let dragCurrentPaths: { lat: number; lng: number }[] | null = null;
+let dragPendingUpdates: { center?: { lat: number; lng: number }; paths?: { lat: number; lng: number }[] } | null = null;
 
 function handleFenceDragStart(e: any, fence: Geofence) {
   if (store.editMode !== 'edit') return;
   dragStartLatLng = e.latlng;
   dragFence = fence;
+  dragCurrentCenter = { lat: fence.center.lat, lng: fence.center.lng };
+  dragCurrentPaths = fence.paths ? [...fence.paths] : null;
+  isDragging.value = true;
+  dragPendingUpdates = null;
   L.DomEvent.stopPropagation(e);
 }
 
@@ -236,25 +303,53 @@ function handleMapMouseMove(e: LeafletMouseEvent) {
     return;
   }
 
-  if (!dragFence || !dragStartLatLng) return;
+  if (!dragFence || !dragStartLatLng || !dragCurrentCenter) return;
 
   const dLat = e.latlng.lat - dragStartLatLng.lat;
   const dLng = e.latlng.lng - dragStartLatLng.lng;
 
+  const layer = fenceLayers.value.get(dragFence.id);
+  if (!layer) return;
+
   if (dragFence.type === 'circle') {
-    store.updateFence(dragFence.id, {
-      center: {
-        lat: dragFence.center.lat + dLat,
-        lng: dragFence.center.lng + dLng
-      }
-    });
-  } else if (dragFence.type === 'polygon' && dragFence.paths) {
-    const newPaths = dragFence.paths.map(p => ({
+    dragCurrentCenter = {
+      lat: dragCurrentCenter.lat + dLat,
+      lng: dragCurrentCenter.lng + dLng
+    };
+
+    layer.setLatLng([dragCurrentCenter.lat, dragCurrentCenter.lng]);
+
+    const centerMarker = markerLayers.value.get(dragFence.id + '-center');
+    const radiusMarker = markerLayers.value.get(dragFence.id + '-radius');
+    if (centerMarker) {
+      centerMarker.setLatLng([dragCurrentCenter.lat, dragCurrentCenter.lng]);
+    }
+    if (radiusMarker) {
+      const newEdgePoint = destinationPoint(dragCurrentCenter, 90, dragFence.radius);
+      radiusMarker.setLatLng([newEdgePoint.lat, newEdgePoint.lng]);
+    }
+
+    dragPendingUpdates = { center: dragCurrentCenter };
+  } else if (dragFence.type === 'polygon' && dragCurrentPaths) {
+    const fenceId = dragFence.id;
+    dragCurrentPaths = dragCurrentPaths.map(p => ({
       lat: p.lat + dLat,
       lng: p.lng + dLng
     }));
-    const center = calculatePolygonCenter(newPaths);
-    store.updateFence(dragFence.id, { paths: newPaths, center });
+    const latlngs = dragCurrentPaths.map(p => [p.lat, p.lng] as [number, number]);
+    layer.setLatLngs(latlngs);
+
+    const paths = dragCurrentPaths;
+    paths.forEach((_, idx) => {
+      const vertexMarker = markerLayers.value.get(fenceId + '-v' + idx);
+      if (vertexMarker) {
+        vertexMarker.setLatLng([paths[idx].lat, paths[idx].lng]);
+      }
+    });
+
+    const center = calculatePolygonCenter(dragCurrentPaths);
+    dragCurrentCenter = center;
+    dragPendingUpdates = { paths: [...dragCurrentPaths], center };
   }
 
   dragStartLatLng = e.latlng;
@@ -262,7 +357,17 @@ function handleMapMouseMove(e: LeafletMouseEvent) {
 
 function handleMapMouseUp() {
   dragStartLatLng = null;
+  const fenceId = dragFence?.id;
+  const updates = dragPendingUpdates;
   dragFence = null;
+  dragCurrentCenter = null;
+  dragCurrentPaths = null;
+  dragPendingUpdates = null;
+  isDragging.value = false;
+
+  if (fenceId && updates) {
+    store.updateFence(fenceId, updates);
+  }
 }
 
 function handleMapClick(e: LeafletMouseEvent) {
@@ -391,6 +496,7 @@ function renderAllDevices() {
 }
 
 watch(() => store.fences, () => {
+  if (isDragging.value) return;
   renderAllFences();
 }, { deep: true });
 
