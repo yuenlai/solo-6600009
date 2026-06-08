@@ -1,5 +1,6 @@
 <template>
-  <div style="display:flex;height:100vh;font-family:sans-serif">
+  <MonitorDashboard v-if="isDashboardMode" @close="exitDashboard" />
+  <div v-else style="display:flex;height:100vh;font-family:sans-serif">
     <nav style="width:60px;background:#1b5e20;display:flex;flex-direction:column;align-items:center;padding-top:16px;gap:8px">
       <div style="color:#fff;font-size:20px">📡</div>
       <div style="color:#fff;font-size:10px;text-align:center">IoT<br/>Monitor</div>
@@ -54,6 +55,14 @@
         title="注册新设备">
         ➕
       </button>
+      <hr style="width:36px;border-color:rgba(255,255,255,0.2);margin:8px 0"/>
+      <button @click="enterDashboard"
+        :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
+          background:'#e65100', color:'#fff',
+          fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center' }"
+        title="监控大屏">
+        🖥️
+      </button>
     </nav>
     <MapView />
     <DeviceRegistration v-if="store.isRegisteringDevice" @registered="handleDeviceRegistered" @cancel="handleRegistrationCancel" />
@@ -72,10 +81,12 @@ import FenceEditor from './components/FenceEditor.vue';
 import AlarmCenter from './components/AlarmCenter.vue';
 import DeviceRegistration from './components/DeviceRegistration.vue';
 import TrackPlayer from './components/TrackPlayer.vue';
+import MonitorDashboard from './components/MonitorDashboard.vue';
 import { useIotStore } from './stores/iot';
 
 const store = useIotStore();
 const activePanel = ref<'devices' | 'fences' | 'alarms' | 'track'>('alarms');
+const isDashboardMode = ref(false);
 
 function handlePanelClick(panel: 'devices' | 'fences' | 'alarms' | 'track') {
   if (activePanel.value === 'track' && panel !== 'track') {
@@ -102,5 +113,16 @@ function handleRegistrationCancel() {
 
 function handleTrackClose() {
   activePanel.value = 'devices';
+}
+
+function enterDashboard() {
+  if (activePanel.value === 'track') {
+    store.disableTrackPlayback();
+  }
+  isDashboardMode.value = true;
+}
+
+function exitDashboard() {
+  isDashboardMode.value = false;
 }
 </script>

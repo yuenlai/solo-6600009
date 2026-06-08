@@ -82,8 +82,41 @@ export const useIotStore = defineStore('iot', () => {
   ]);
 
   const onlineCount = computed(() => devices.value.filter(d => d.status === 'online').length);
+  const offlineCount = computed(() => devices.value.filter(d => d.status === 'offline').length);
+  const alertDeviceCount = computed(() => devices.value.filter(d => d.status === 'alert').length);
+  const deviceCount = computed(() => devices.value.length);
+  const fenceCount = computed(() => fences.value.length);
   const alertCount = computed(() => alerts.value.filter(a => !a.acknowledged).length);
   const selectedFence = computed(() => fences.value.find(f => f.id === selectedFenceId.value) || null);
+
+  const avgBattery = computed(() => {
+    const onlineDevices = devices.value.filter(d => d.status !== 'offline');
+    if (onlineDevices.length === 0) return 0;
+    return Math.round(onlineDevices.reduce((sum, d) => sum + d.battery, 0) / onlineDevices.length);
+  });
+
+  const avgTemperature = computed(() => {
+    const onlineDevices = devices.value.filter(d => d.status !== 'offline');
+    if (onlineDevices.length === 0) return 0;
+    return Number((onlineDevices.reduce((sum, d) => sum + d.temperature, 0) / onlineDevices.length).toFixed(1));
+  });
+
+  const lowBatteryCount = computed(() => devices.value.filter(d => d.battery < 20 && d.status !== 'offline').length);
+
+  const devicesRanked = computed(() => {
+    return [...devices.value].sort((a, b) => {
+      const statusOrder = { alert: 0, offline: 1, online: 2 };
+      const statusDiff = statusOrder[a.status] - statusOrder[b.status];
+      if (statusDiff !== 0) return statusDiff;
+      return b.battery - a.battery;
+    });
+  });
+
+  const recentAlerts = computed(() => {
+    return [...alerts.value]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 50);
+  });
 
   const unacknowledgedAlerts = computed(() => alerts.value.filter(a => !a.acknowledged));
 
@@ -601,7 +634,8 @@ export const useIotStore = defineStore('iot', () => {
   return {
     devices, fences, alerts, selectedFenceId, editMode, highlightedDeviceId,
     isRegisteringDevice, registrationLocation, groups,
-    onlineCount, alertCount, selectedFence,
+    onlineCount, offlineCount, alertDeviceCount, deviceCount, fenceCount, alertCount, selectedFence,
+    avgBattery, avgTemperature, lowBatteryCount, devicesRanked, recentAlerts,
     unacknowledgedAlerts, criticalAlerts, warningAlerts, infoAlerts,
     criticalCount, warningCount, infoCount,
     trackPlaybackEnabled, trackData, playbackDeviceId,
