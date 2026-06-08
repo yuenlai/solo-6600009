@@ -4,7 +4,7 @@
       <div style="color:#fff;font-size:20px">📡</div>
       <div style="color:#fff;font-size:10px;text-align:center">IoT<br/>Monitor</div>
       <hr style="width:36px;border-color:rgba(255,255,255,0.2);margin:8px 0"/>
-      <button @click="activePanel = 'devices'"
+      <button @click="handlePanelClick('devices')"
         :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
           background: activePanel === 'devices' ? '#fff' : 'transparent',
           color: activePanel === 'devices' ? '#1b5e20' : '#fff',
@@ -12,7 +12,7 @@
         title="设备监控">
         📱
       </button>
-      <button @click="activePanel = 'fences'"
+      <button @click="handlePanelClick('fences')"
         :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
           background: activePanel === 'fences' ? '#fff' : 'transparent',
           color: activePanel === 'fences' ? '#1b5e20' : '#fff',
@@ -21,7 +21,7 @@
         🗺️
       </button>
       <div style="position:relative">
-        <button @click="activePanel = 'alarms'"
+        <button @click="handlePanelClick('alarms')"
           :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
             background: activePanel === 'alarms' ? '#fff' : 'transparent',
             color: activePanel === 'alarms' ? '#1b5e20' : '#fff',
@@ -37,6 +37,14 @@
           {{ store.alertCount > 99 ? '99+' : store.alertCount }}
         </span>
       </div>
+      <button @click="handlePanelClick('track')"
+        :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
+          background: activePanel === 'track' ? '#fff' : 'transparent',
+          color: activePanel === 'track' ? '#1b5e20' : '#fff',
+          fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center' }"
+        title="轨迹回放">
+        🎥
+      </button>
       <hr style="width:36px;border-color:rgba(255,255,255,0.2);margin:8px 0"/>
       <button @click="handleAddDevice"
         :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
@@ -52,6 +60,7 @@
     <DevicePanel v-else-if="activePanel === 'devices'" @add-device="handleAddDevice" />
     <FenceEditor v-if="activePanel === 'fences' && !store.isRegisteringDevice" />
     <AlarmCenter v-if="activePanel === 'alarms' && !store.isRegisteringDevice" />
+    <TrackPlayer v-if="activePanel === 'track' && !store.isRegisteringDevice" @close="handleTrackClose" />
   </div>
 </template>
 
@@ -62,10 +71,21 @@ import DevicePanel from './components/DevicePanel.vue';
 import FenceEditor from './components/FenceEditor.vue';
 import AlarmCenter from './components/AlarmCenter.vue';
 import DeviceRegistration from './components/DeviceRegistration.vue';
+import TrackPlayer from './components/TrackPlayer.vue';
 import { useIotStore } from './stores/iot';
 
 const store = useIotStore();
-const activePanel = ref<'devices' | 'fences' | 'alarms'>('alarms');
+const activePanel = ref<'devices' | 'fences' | 'alarms' | 'track'>('alarms');
+
+function handlePanelClick(panel: 'devices' | 'fences' | 'alarms' | 'track') {
+  if (activePanel.value === 'track' && panel !== 'track') {
+    store.disableTrackPlayback();
+  }
+  if (panel === 'track') {
+    store.enableTrackPlayback();
+  }
+  activePanel.value = panel;
+}
 
 function handleAddDevice() {
   store.startDeviceRegistration();
@@ -78,5 +98,9 @@ function handleDeviceRegistered(deviceId: string) {
 
 function handleRegistrationCancel() {
   store.cancelDeviceRegistration();
+}
+
+function handleTrackClose() {
+  activePanel.value = 'devices';
 }
 </script>

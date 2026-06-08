@@ -54,3 +54,45 @@ export interface Alert {
 export interface MqttMessage {
   topic: string; payload: string; timestamp: string;
 }
+
+export interface TrackPoint {
+  lat: number;
+  lng: number;
+  timestamp: string;
+  speed?: number;
+  battery?: number;
+  temperature?: number;
+  isAbnormal?: boolean;
+  abnormalType?: 'fence_breach' | 'low_battery' | 'offline' | 'speed';
+  abnormalMessage?: string;
+}
+
+export interface StayPoint {
+  lat: number;
+  lng: number;
+  startTime: string;
+  endTime: string;
+  duration: number;
+  name?: string;
+}
+
+export interface TrackSegment {
+  points: TrackPoint[];
+  isNormal: boolean;
+  abnormalType?: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface TrackData {
+  deviceId: string;
+  deviceName: string;
+  startTime: string;
+  endTime: string;
+  points: TrackPoint[];
+  segments: TrackSegment[];
+  stayPoints: StayPoint[];
+  breachEvents: TrackPoint[];
+  totalDistance: number;
+  totalDuration: number;
+}

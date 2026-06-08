@@ -26,6 +26,12 @@ const fenceLayers = ref<Map<string, any>>(new Map());
 const markerLayers = ref<Map<string, any>>(new Map());
 const deviceLayers = ref<Map<string, any>>(new Map());
 const registrationMarker = ref<any>(null);
+const trackLayers = ref<any[]>([]);
+const trackPointMarker = ref<any>(null);
+const stayPointMarkers = ref<any[]>([]);
+const breachEventMarkers = ref<any[]>([]);
+const playbackMarker = ref<any>(null);
+const playbackTrailLayers = ref<any[]>([]);
 
 const drawingTempCircle = ref<any>(null);
 const drawingTempPolygon = ref<any>(null);
@@ -65,6 +71,41 @@ const registrationIcon = L.divIcon({
   html: '<div style="width:20px;height:20px;background:#1b5e20;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(27,94,32,0.6)"></div>',
   iconSize: [20, 20],
   iconAnchor: [10, 10]
+});
+
+const stayPointIcon = L.divIcon({
+  className: 'stay-point-icon',
+  html: '<div style="width:16px;height:16px;background:#ff9800;border:3px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(255,152,0,0.8)"></div>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8]
+});
+
+const breachEventIcon = L.divIcon({
+  className: 'breach-event-icon',
+  html: '<div style="width:18px;height:18px;background:#e53935;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(229,57,53,0.8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:bold">!</div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9]
+});
+
+const playbackIcon = L.divIcon({
+  className: 'playback-icon',
+  html: '<div style="width:24px;height:24px;background:#1976d2;border:4px solid #fff;border-radius:50%;box-shadow:0 0 12px rgba(25,118,210,0.8);animation:pulse 1.5s ease-in-out infinite"></div>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12]
+});
+
+const startPointIcon = L.divIcon({
+  className: 'start-point-icon',
+  html: '<div style="width:14px;height:14px;background:#4caf50;border:3px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(76,175,80,0.8)"></div>',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
+});
+
+const endPointIcon = L.divIcon({
+  className: 'end-point-icon',
+  html: '<div style="width:14px;height:14px;background:#f44336;border:3px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(244,67,54,0.8)"></div>',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
 });
 
 function renderFence(fence: Geofence) {
@@ -567,6 +608,214 @@ function panToDevice(deviceId: string) {
   }
 }
 
+function clearAllTrackLayers() {
+  trackLayers.value.forEach(layer => map.value!.removeLayer(layer));
+  trackLayers.value = [];
+  stayPointMarkers.value.forEach(marker => map.value!.removeLayer(marker));
+  stayPointMarkers.value = [];
+  breachEventMarkers.value.forEach(marker => map.value!.removeLayer(marker));
+  breachEventMarkers.value = [];
+  if (trackPointMarker.value) {
+    map.value!.removeLayer(trackPointMarker.value);
+    trackPointMarker.value = null;
+  }
+  clearPlaybackMarker();
+}
+
+function clearPlaybackMarker() {
+  if (playbackMarker.value) {
+    map.value!.removeLayer(playbackMarker.value);
+    playbackMarker.value = null;
+  }
+  playbackTrailLayers.value.forEach(layer => map.value!.removeLayer(layer));
+  playbackTrailLayers.value = [];
+}
+
+function formatTrackTime(isoString: string): string {
+  const date = new Date(isoString);
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}
+
+function renderTrack() {
+  clearAllTrackLayers();
+
+  if (!store.trackData || !store.showTrack) return;
+
+  const segments = store.trackData.segments;
+
+  segments.forEach((segment, segIdx) => {
+    if (segment.points.length < 2) return;
+
+    const latlngs = segment.points.map(p => [p.lat, p.lng] as [number, number]);
+    const color = segment.isNormal ? '#4caf50' : '#e53935';
+    const weight = segment.isNormal ? 4 : 5;
+    const opacity = segment.isNormal ? 0.8 : 1;
+    const dashArray = segment.isNormal ? undefined : '10,5';
+
+    const polyline = L.polyline(latlngs, {
+      color,
+      weight,
+      opacity,
+      dashArray,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(map.value!);
+
+    const startTime = formatTrackTime(segment.startTime);
+    const endTime = formatTrackTime(segment.endTime);
+    const statusText = segment.isNormal ? '正常行驶' : (segment.abnormalType === 'fence_breach' ? '越界异常' : '异常');
+
+    polyline.bindPopup(`
+      <b>${statusText}</b><br>
+      时间: ${startTime} - ${endTime}<br>
+      点数: ${segment.points.length}
+    `);
+
+    trackLayers.value.push(polyline);
+  });
+
+  const points = store.trackData.points;
+  if (points.length > 0) {
+    const startMarker = L.marker([points[0].lat, points[0].lng], { icon: startPointIcon })
+      .bindPopup(`<b>🚩 起点</b><br>${formatTrackTime(points[0].timestamp)}`)
+      .addTo(map.value!);
+    trackLayers.value.push(startMarker);
+
+    const endMarker = L.marker([points[points.length - 1].lat, points[points.length - 1].lng], { icon: endPointIcon })
+      .bindPopup(`<b>🏁 终点</b><br>${formatTrackTime(points[points.length - 1].timestamp)}`)
+      .addTo(map.value!);
+    trackLayers.value.push(endMarker);
+  }
+}
+
+function renderStayPoints() {
+  stayPointMarkers.value.forEach(marker => map.value!.removeLayer(marker));
+  stayPointMarkers.value = [];
+
+  if (!store.trackData || !store.showStayPoints) return;
+
+  store.trackData.stayPoints.forEach((sp, idx) => {
+    const duration = store.formatDuration(sp.duration);
+    const marker = L.marker([sp.lat, sp.lng], { icon: stayPointIcon })
+      .bindPopup(`
+        <b>⏸️ ${sp.name}</b><br>
+        停留时长: ${duration}<br>
+        开始: ${formatTrackTime(sp.startTime)}<br>
+        结束: ${formatTrackTime(sp.endTime)}
+      `)
+      .on('click', () => {
+        store.jumpToStayPoint(sp);
+      })
+      .addTo(map.value!);
+
+    const circle = L.circle([sp.lat, sp.lng], {
+      radius: 30,
+      color: '#ff9800',
+      fillColor: '#ff9800',
+      fillOpacity: 0.15,
+      weight: 1,
+      dashArray: '5,5'
+    }).addTo(map.value!);
+
+    stayPointMarkers.value.push(marker, circle);
+  });
+}
+
+function renderBreachEvents() {
+  breachEventMarkers.value.forEach(marker => map.value!.removeLayer(marker));
+  breachEventMarkers.value = [];
+
+  if (!store.trackData || !store.showBreachEvents) return;
+
+  store.trackData.breachEvents.forEach((be, idx) => {
+    const marker = L.marker([be.lat, be.lng], { icon: breachEventIcon })
+      .bindPopup(`
+        <b>🚨 越界告警</b><br>
+        ${be.abnormalMessage || '进入危险区域'}<br>
+        时间: ${formatTrackTime(be.timestamp)}
+      `)
+      .on('click', () => {
+        store.jumpToBreachEvent(be);
+      })
+      .addTo(map.value!);
+
+    const circle = L.circle([be.lat, be.lng], {
+      radius: 50,
+      color: '#e53935',
+      fillColor: '#e53935',
+      fillOpacity: 0.2,
+      weight: 2
+    }).addTo(map.value!);
+
+    breachEventMarkers.value.push(marker, circle);
+  });
+}
+
+function renderPlaybackMarker() {
+  clearPlaybackMarker();
+
+  if (!store.trackPlaybackEnabled || !store.playbackCurrentPoint) return;
+
+  const point = store.playbackCurrentPoint;
+
+  const pulseCircle = L.circle([point.lat, point.lng], {
+    radius: 40,
+    color: '#1976d2',
+    fillColor: '#1976d2',
+    fillOpacity: 0.15,
+    weight: 2,
+    dashArray: '5,5'
+  }).addTo(map.value!);
+  playbackTrailLayers.value.push(pulseCircle);
+
+  const marker = L.marker([point.lat, point.lng], { icon: playbackIcon })
+    .bindPopup(`
+      <b>📍 当前位置</b><br>
+      时间: ${formatTrackTime(point.timestamp)}<br>
+      速度: ${point.speed?.toFixed(1) || '0'} km/h<br>
+      电量: ${point.battery ?? '--'}%<br>
+      温度: ${point.temperature?.toFixed(1) || '--'}°C<br>
+      状态: ${point.isAbnormal ? '<span style="color:#e53935">异常</span>' : '<span style="color:#4caf50">正常</span>'}
+    `)
+    .addTo(map.value!);
+
+  marker.openPopup();
+  playbackMarker.value = marker;
+
+  if (store.playbackCurrentIndex > 0 && store.trackData) {
+    const trailPoints = store.trackData.points.slice(
+      Math.max(0, store.playbackCurrentIndex - 20),
+      store.playbackCurrentIndex + 1
+    );
+    if (trailPoints.length >= 2) {
+      const trailLatlngs = trailPoints.map(p => [p.lat, p.lng] as [number, number]);
+      const trail = L.polyline(trailLatlngs, {
+        color: '#1976d2',
+        weight: 6,
+        opacity: 0.6,
+        lineCap: 'round'
+      }).addTo(map.value!);
+      playbackTrailLayers.value.push(trail);
+    }
+  }
+
+  map.value!.panTo([point.lat, point.lng], { animate: true, duration: 0.3 });
+}
+
+function fitTrackBounds() {
+  if (!store.trackData || store.trackData.points.length === 0) return;
+
+  const latlngs = store.trackData.points.map(p => [p.lat, p.lng] as [number, number]);
+  const bounds = L.latLngBounds(latlngs);
+  map.value!.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 0.5 });
+}
+
 watch(() => store.fences, () => {
   if (isDragging.value) return;
   renderAllFences();
@@ -607,7 +856,49 @@ watch(() => store.registrationLocation, (loc) => {
   }
 });
 
+watch(() => store.trackData, (newTrackData) => {
+  if (newTrackData) {
+    renderTrack();
+    renderStayPoints();
+    renderBreachEvents();
+    fitTrackBounds();
+  } else {
+    clearAllTrackLayers();
+  }
+}, { deep: true });
+
+watch(() => store.showTrack, () => {
+  renderTrack();
+});
+
+watch(() => store.showStayPoints, () => {
+  renderStayPoints();
+});
+
+watch(() => store.showBreachEvents, () => {
+  renderBreachEvents();
+});
+
+watch(() => store.playbackCurrentPoint, () => {
+  renderPlaybackMarker();
+});
+
+watch(() => store.trackPlaybackEnabled, (enabled) => {
+  if (!enabled) {
+    clearAllTrackLayers();
+  }
+});
+
 onMounted(() => {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: 0.7; }
+    }
+  `;
+  document.head.appendChild(style);
+
   map.value = L.map('map').setView([39.9042, 116.4074], 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap'
