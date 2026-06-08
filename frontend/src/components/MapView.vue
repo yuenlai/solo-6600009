@@ -5,6 +5,10 @@
       padding:'8px 16px', background:'#1976d2', color:'#fff', borderRadius:'20px', fontSize:'12px', zIndex:1000, boxShadow:'0 2px 8px rgba(0,0,0,0.2)' }">
       {{ modeHint }}
     </div>
+    <div v-if="store.isRegisteringDevice" :style="{ position:'absolute', top:'12px', left:'50%', transform:'translateX(-50%)',
+      padding:'8px 16px', background:'#1b5e20', color:'#fff', borderRadius:'20px', fontSize:'12px', zIndex:1000, boxShadow:'0 2px 8px rgba(0,0,0,0.2)' }">
+      📍 点击地图选择设备位置
+    </div>
   </div>
 </template>
 
@@ -21,6 +25,7 @@ const map = ref<any>(null);
 const fenceLayers = ref<Map<string, any>>(new Map());
 const markerLayers = ref<Map<string, any>>(new Map());
 const deviceLayers = ref<Map<string, any>>(new Map());
+const registrationMarker = ref<any>(null);
 
 const drawingTempCircle = ref<any>(null);
 const drawingTempPolygon = ref<any>(null);
@@ -53,6 +58,13 @@ const vertexIcon = L.divIcon({
   html: '<div style="width:10px;height:10px;background:#fff;border:2px solid #1976d2;border-radius:50%"></div>',
   iconSize: [10, 10],
   iconAnchor: [5, 5]
+});
+
+const registrationIcon = L.divIcon({
+  className: 'registration-div-icon',
+  html: '<div style="width:20px;height:20px;background:#1b5e20;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(27,94,32,0.6)"></div>',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10]
 });
 
 function renderFence(fence: Geofence) {
@@ -371,6 +383,14 @@ function handleMapMouseUp() {
 }
 
 function handleMapClick(e: LeafletMouseEvent) {
+  if (store.isRegisteringDevice) {
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    store.setRegistrationLocation(lat, lng);
+    updateRegistrationMarker(lat, lng);
+    return;
+  }
+
   if (store.editMode === 'draw-circle') {
     if (!isDrawingCircleSecondClick.value) {
       drawingCircleCenter.value = { lat: e.latlng.lat, lng: e.latlng.lng };
@@ -398,6 +418,23 @@ function handleMapClick(e: LeafletMouseEvent) {
 
     const marker = L.marker([e.latlng.lat, e.latlng.lng], { icon: tempIcon }).addTo(map.value!);
     drawingTempMarkers.value.push(marker);
+  }
+}
+
+function updateRegistrationMarker(lat: number, lng: number) {
+  if (registrationMarker.value) {
+    map.value!.removeLayer(registrationMarker.value);
+  }
+  registrationMarker.value = L.marker([lat, lng], { icon: registrationIcon })
+    .bindPopup('<b>📍 新设备位置</b><br>点击确认此位置')
+    .addTo(map.value!);
+  registrationMarker.value.openPopup();
+}
+
+function clearRegistrationMarker() {
+  if (registrationMarker.value) {
+    map.value!.removeLayer(registrationMarker.value);
+    registrationMarker.value = null;
   }
 }
 
@@ -554,6 +591,19 @@ watch(() => store.highlightedDeviceId, (newId, oldId) => {
   renderAllDevices();
   if (newId && newId !== oldId) {
     panToDevice(newId);
+  }
+});
+
+watch(() => store.isRegisteringDevice, (isRegistering) => {
+  if (!isRegistering) {
+    clearRegistrationMarker();
+  }
+});
+
+watch(() => store.registrationLocation, (loc) => {
+  if (loc && store.isRegisteringDevice) {
+    updateRegistrationMarker(loc.lat, loc.lng);
+    map.value!.panTo([loc.lat, loc.lng], { animate: true, duration: 0.5 });
   }
 });
 

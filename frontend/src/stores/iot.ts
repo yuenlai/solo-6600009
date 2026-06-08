@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { Device, Geofence, Alert, AlertType, AlertSeverity } from '../types';
+import type { Device, Geofence, Alert, AlertType, AlertSeverity, DeviceGroup, DeviceThresholds } from '../types';
 
 function generateId(prefix: string) {
   return prefix + Date.now() + Math.random().toString(36).slice(2, 6);
@@ -58,6 +58,15 @@ export const useIotStore = defineStore('iot', () => {
   const selectedFenceId = ref<string | null>(null);
   const editMode = ref<'none' | 'draw-circle' | 'draw-polygon' | 'edit'>('none');
   const highlightedDeviceId = ref<string | null>(null);
+  const isRegisteringDevice = ref(false);
+  const registrationLocation = ref<{ lat: number; lng: number } | null>(null);
+
+  const groups = ref<DeviceGroup[]>([
+    { id: 'g1', name: '生产车间', color: '#1976d2', description: '生产线设备' },
+    { id: 'g2', name: '仓储区域', color: '#388e3c', description: '仓库监控设备' },
+    { id: 'g3', name: '办公区域', color: '#f57c00', description: '办公环境监测' },
+    { id: 'g4', name: '室外设施', color: '#7b1fa2', description: '户外设备' },
+  ]);
 
   const onlineCount = computed(() => devices.value.filter(d => d.status === 'online').length);
   const alertCount = computed(() => alerts.value.filter(a => !a.acknowledged).length);
@@ -192,6 +201,36 @@ export const useIotStore = defineStore('iot', () => {
     return id;
   }
 
+  function addDevice(device: Omit<Device, 'id' | 'status' | 'lastSeen'>) {
+    const id = generateId('d');
+    const newDevice: Device = {
+      ...device,
+      id,
+      status: 'online',
+      lastSeen: new Date().toISOString()
+    };
+    devices.value.push(newDevice);
+    return id;
+  }
+
+  function getGroupById(id: string) {
+    return groups.value.find(g => g.id === id);
+  }
+
+  function startDeviceRegistration() {
+    isRegisteringDevice.value = true;
+    registrationLocation.value = null;
+  }
+
+  function cancelDeviceRegistration() {
+    isRegisteringDevice.value = false;
+    registrationLocation.value = null;
+  }
+
+  function setRegistrationLocation(lat: number, lng: number) {
+    registrationLocation.value = { lat, lng };
+  }
+
   function updateFence(id: string, updates: Partial<Geofence>) {
     const idx = fences.value.findIndex(f => f.id === id);
     if (idx !== -1) {
@@ -226,13 +265,15 @@ export const useIotStore = defineStore('iot', () => {
 
   return {
     devices, fences, alerts, selectedFenceId, editMode, highlightedDeviceId,
+    isRegisteringDevice, registrationLocation, groups,
     onlineCount, alertCount, selectedFence,
     unacknowledgedAlerts, criticalAlerts, warningAlerts, infoAlerts,
     criticalCount, warningCount, infoCount,
-    getDeviceById, getFenceById,
+    getDeviceById, getFenceById, getGroupById,
     acknowledgeAlert, batchAcknowledgeAlerts, acknowledgeAllAlerts,
     setHighlightedDevice, addAlert, generateMockAlert,
     startMockAlertStream, stopMockAlertStream,
-    addFence, updateFence, deleteFence, selectFence, setEditMode
+    addFence, updateFence, deleteFence, selectFence, setEditMode,
+    addDevice, startDeviceRegistration, cancelDeviceRegistration, setRegistrationLocation
   };
 });

@@ -2,6 +2,31 @@ export interface Device {
   id: string; name: string; lat: number; lng: number;
   status: 'online' | 'offline' | 'alert'; lastSeen: string;
   battery: number; temperature: number;
+  groupId?: string;
+  thresholds?: DeviceThresholds;
+}
+
+export interface DeviceThresholds {
+  lowBattery: number;
+  highTemperature: number;
+  offlineTimeout: number;
+}
+
+export interface DeviceGroup {
+  id: string;
+  name: string;
+  color: string;
+  description?: string;
+}
+
+export interface DeviceRegistrationForm {
+  name: string;
+  lat: number;
+  lng: number;
+  battery: number;
+  temperature: number;
+  groupId?: string;
+  thresholds: DeviceThresholds;
 }
 
 export interface Geofence {

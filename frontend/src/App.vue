@@ -37,11 +37,21 @@
           {{ store.alertCount > 99 ? '99+' : store.alertCount }}
         </span>
       </div>
+      <hr style="width:36px;border-color:rgba(255,255,255,0.2);margin:8px 0"/>
+      <button @click="handleAddDevice"
+        :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
+          background: store.isRegisteringDevice ? '#fff' : 'transparent',
+          color: store.isRegisteringDevice ? '#1b5e20' : '#fff',
+          fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center' }"
+        title="注册新设备">
+        ➕
+      </button>
     </nav>
     <MapView />
-    <DevicePanel v-if="activePanel === 'devices'" />
-    <FenceEditor v-if="activePanel === 'fences'" />
-    <AlarmCenter v-if="activePanel === 'alarms'" />
+    <DeviceRegistration v-if="store.isRegisteringDevice" @registered="handleDeviceRegistered" @cancel="handleRegistrationCancel" />
+    <DevicePanel v-else-if="activePanel === 'devices'" @add-device="handleAddDevice" />
+    <FenceEditor v-if="activePanel === 'fences' && !store.isRegisteringDevice" />
+    <AlarmCenter v-if="activePanel === 'alarms' && !store.isRegisteringDevice" />
   </div>
 </template>
 
@@ -51,8 +61,22 @@ import MapView from './components/MapView.vue';
 import DevicePanel from './components/DevicePanel.vue';
 import FenceEditor from './components/FenceEditor.vue';
 import AlarmCenter from './components/AlarmCenter.vue';
+import DeviceRegistration from './components/DeviceRegistration.vue';
 import { useIotStore } from './stores/iot';
 
 const store = useIotStore();
 const activePanel = ref<'devices' | 'fences' | 'alarms'>('alarms');
+
+function handleAddDevice() {
+  store.startDeviceRegistration();
+  activePanel.value = 'devices';
+}
+
+function handleDeviceRegistered(deviceId: string) {
+  activePanel.value = 'devices';
+}
+
+function handleRegistrationCancel() {
+  store.cancelDeviceRegistration();
+}
 </script>
