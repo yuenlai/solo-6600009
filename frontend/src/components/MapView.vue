@@ -487,12 +487,47 @@ function renderAllDevices() {
   deviceLayers.value.clear();
 
   store.devices.forEach(d => {
+    const isHighlighted = store.highlightedDeviceId === d.id;
     const color = d.status === 'online' ? '#4caf50' : d.status === 'alert' ? '#e53935' : '#9e9e9e';
-    const marker = L.circleMarker([d.lat, d.lng], { radius: 8, color, fillColor: color, fillOpacity: 0.8 })
+    const baseRadius = 8;
+    const radius = isHighlighted ? baseRadius + 6 : baseRadius;
+    const weight = isHighlighted ? 4 : 2;
+
+    if (isHighlighted) {
+      const pulseMarker = L.circleMarker([d.lat, d.lng], {
+        radius: radius + 8,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.2,
+        weight: 2,
+        dashArray: '5,5'
+      }).addTo(map.value!);
+      deviceLayers.value.set(d.id + '-pulse', pulseMarker);
+    }
+
+    const marker = L.circleMarker([d.lat, d.lng], {
+      radius,
+      color,
+      fillColor: color,
+      fillOpacity: isHighlighted ? 1 : 0.8,
+      weight
+    })
       .addTo(map.value!)
       .bindPopup(`<b>${d.name}</b><br>状态: ${d.status === 'online' ? '在线' : d.status === 'alert' ? '告警' : '离线'}<br>电量: ${d.battery}%<br>温度: ${d.temperature}°C`);
+
+    if (isHighlighted) {
+      marker.openPopup();
+    }
+
     deviceLayers.value.set(d.id, marker);
   });
+}
+
+function panToDevice(deviceId: string) {
+  const device = store.getDeviceById(deviceId);
+  if (device && map.value) {
+    map.value.panTo([device.lat, device.lng], { animate: true, duration: 0.5 });
+  }
 }
 
 watch(() => store.fences, () => {
@@ -514,6 +549,13 @@ watch(() => store.editMode, (newMode) => {
 watch(() => store.devices, () => {
   renderAllDevices();
 }, { deep: true });
+
+watch(() => store.highlightedDeviceId, (newId, oldId) => {
+  renderAllDevices();
+  if (newId && newId !== oldId) {
+    panToDevice(newId);
+  }
+});
 
 onMounted(() => {
   map.value = L.map('map').setView([39.9042, 116.4074], 14);

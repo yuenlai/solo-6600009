@@ -20,10 +20,28 @@
         title="围栏工作台">
         🗺️
       </button>
+      <div style="position:relative">
+        <button @click="activePanel = 'alarms'"
+          :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
+            background: activePanel === 'alarms' ? '#fff' : 'transparent',
+            color: activePanel === 'alarms' ? '#1b5e20' : '#fff',
+            fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center' }"
+          title="告警中心">
+          🔔
+        </button>
+        <span v-if="store.alertCount > 0"
+          :style="{ position:'absolute', top:'2px', right:'2px', minWidth:'16px', height:'16px',
+            borderRadius:'8px', background:'#e53935', color:'#fff', fontSize:'10px',
+            display:'flex', alignItems:'center', justifyContent:'center', fontWeight:600,
+            padding:'0 4px', lineHeight:'1' }">
+          {{ store.alertCount > 99 ? '99+' : store.alertCount }}
+        </span>
+      </div>
     </nav>
     <MapView />
     <DevicePanel v-if="activePanel === 'devices'" />
     <FenceEditor v-if="activePanel === 'fences'" />
+    <AlarmCenter v-if="activePanel === 'alarms'" />
   </div>
 </template>
 
@@ -32,6 +50,9 @@ import { ref } from 'vue';
 import MapView from './components/MapView.vue';
 import DevicePanel from './components/DevicePanel.vue';
 import FenceEditor from './components/FenceEditor.vue';
+import AlarmCenter from './components/AlarmCenter.vue';
+import { useIotStore } from './stores/iot';
 
-const activePanel = ref<'devices' | 'fences'>('fences');
+const store = useIotStore();
+const activePanel = ref<'devices' | 'fences' | 'alarms'>('alarms');
 </script>

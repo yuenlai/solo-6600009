@@ -12,10 +12,18 @@ export interface Geofence {
   alertOnEnter: boolean; alertOnExit: boolean; color: string;
 }
 
+export type AlertType = 'enter' | 'exit' | 'low_battery' | 'offline';
+export type AlertSeverity = 'critical' | 'warning' | 'info';
+
 export interface Alert {
-  id: string; deviceId: string; fenceId: string;
-  type: 'enter' | 'exit' | 'low_battery'; timestamp: string;
-  message: string; acknowledged: boolean;
+  id: string;
+  deviceId: string;
+  fenceId?: string;
+  type: AlertType;
+  severity: AlertSeverity;
+  timestamp: string;
+  message: string;
+  acknowledged: boolean;
 }
 
 export interface MqttMessage {
