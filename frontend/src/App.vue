@@ -46,6 +46,14 @@
         title="轨迹回放">
         🎥
       </button>
+      <button @click="handlePanelClick('health')"
+        :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
+          background: activePanel === 'health' ? '#fff' : 'transparent',
+          color: activePanel === 'health' ? '#1b5e20' : '#fff',
+          fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center' }"
+        title="健康诊断">
+        🏥
+      </button>
       <hr style="width:36px;border-color:rgba(255,255,255,0.2);margin:8px 0"/>
       <button @click="handleAddDevice"
         :style="{ width:'44px', height:'44px', borderRadius:'8px', border:'none', cursor:'pointer',
@@ -70,6 +78,7 @@
     <FenceEditor v-if="activePanel === 'fences' && !store.isRegisteringDevice" />
     <AlarmCenter v-if="activePanel === 'alarms' && !store.isRegisteringDevice" />
     <TrackPlayer v-if="activePanel === 'track' && !store.isRegisteringDevice" @close="handleTrackClose" />
+    <DeviceHealthDiagnosis v-if="activePanel === 'health' && !store.isRegisteringDevice" />
   </div>
 </template>
 
@@ -82,13 +91,14 @@ import AlarmCenter from './components/AlarmCenter.vue';
 import DeviceRegistration from './components/DeviceRegistration.vue';
 import TrackPlayer from './components/TrackPlayer.vue';
 import MonitorDashboard from './components/MonitorDashboard.vue';
+import DeviceHealthDiagnosis from './components/DeviceHealthDiagnosis.vue';
 import { useIotStore } from './stores/iot';
 
 const store = useIotStore();
-const activePanel = ref<'devices' | 'fences' | 'alarms' | 'track'>('alarms');
+const activePanel = ref<'devices' | 'fences' | 'alarms' | 'track' | 'health'>('alarms');
 const isDashboardMode = ref(false);
 
-function handlePanelClick(panel: 'devices' | 'fences' | 'alarms' | 'track') {
+function handlePanelClick(panel: 'devices' | 'fences' | 'alarms' | 'track' | 'health') {
   if (activePanel.value === 'track' && panel !== 'track') {
     store.disableTrackPlayback();
   }

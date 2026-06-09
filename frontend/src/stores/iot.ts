@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { Device, Geofence, Alert, AlertType, AlertSeverity, DeviceGroup, DeviceThresholds, TrackData, TrackPoint, StayPoint, TrackSegment } from '../types';
+import type { Device, Geofence, Alert, AlertType, AlertSeverity, DeviceGroup, DeviceThresholds, TrackData, TrackPoint, StayPoint, TrackSegment, HealthDataPoint, DeviceHealth, HealthSummary } from '../types';
 
 function generateId(prefix: string) {
   return prefix + Date.now() + Math.random().toString(36).slice(2, 6);
@@ -631,6 +631,232 @@ export const useIotStore = defineStore('iot', () => {
     return meters + ' 米';
   }
 
+  function generateHealthHistory(device: Device, hours: number = 24): HealthDataPoint[] {
+    const points: HealthDataPoint[] = [];
+    const now = new Date();
+    const interval = 30 * 60 * 1000;
+
+    let currentBattery = device.battery;
+    let currentTemp = device.temperature;
+
+    for (let i = hours * 2; i >= 0; i--) {
+      const timestamp = new Date(now.getTime() - i * interval);
+
+      currentBattery = Math.max(0, Math.min(100, currentBattery + (Math.random() - 0.6) * 2));
+      currentTemp = Math.max(0, Math.min(60, currentTemp + (Math.random() - 0.5) * 3));
+
+      const isOnline = device.status !== 'offline' || Math.random() > 0.1;
+
+      points.push({
+        timestamp: timestamp.toISOString(),
+        battery: Math.round(currentBattery * 10) / 10,
+        temperature: Math.round(currentTemp * 10) / 10,
+        isOnline
+      });
+    }
+
+    return points;
+  }
+
+  function calculateHealthScore(device: Device): number {
+    let score = 100;
+
+    if (device.status === 'offline') {
+      score -= 50;
+    } else if (device.status === 'alert') {
+      score -= 25;
+    }
+
+    if (device.battery < 10) {
+      score -= 30;
+    } else if (device.battery < 20) {
+      score -= 20;
+    } else if (device.battery < 30) {
+      score -= 10;
+    } else if (device.battery < 50) {
+      score -= 5;
+    }
+
+    if (device.temperature > 45) {
+      score -= 25;
+    } else if (device.temperature > 38) {
+      score -= 15;
+    } else if (device.temperature > 35) {
+      score -= 5;
+    }
+
+    const deviceAlerts = alerts.value.filter(a => a.deviceId === device.id && !a.acknowledged);
+    if (deviceAlerts.length > 0) {
+      const criticalCount = deviceAlerts.filter(a => a.severity === 'critical').length;
+      const warningCount = deviceAlerts.filter(a => a.severity === 'warning').length;
+      score -= criticalCount * 15 + warningCount * 5;
+    }
+
+    return Math.max(0, Math.min(100, score));
+  }
+
+  function calculateHealthTrend(history: HealthDataPoint[]): 'improving' | 'stable' | 'declining' {
+    const recentData = history.slice(-8);
+    const olderData = history.slice(-16, -8);
+
+    if (recentData.length < 4 || olderData.length < 4) return 'stable';
+
+    const recentAvg = recentData.reduce((sum, p) => sum + p.battery, 0) / recentData.length;
+    const olderAvg = olderData.reduce((sum, p) => sum + p.battery, 0) / olderData.length;
+
+    const diff = recentAvg - olderAvg;
+
+    if (diff > 2) return 'improving';
+    if (diff < -2) return 'declining';
+    return 'stable';
+  }
+
+  function generateRecommendations(device: Device, healthScore: number): string[] {
+    const recommendations: string[] = [];
+
+    if (device.status === 'offline') {
+      recommendations.push('设备离线，需立即检查连接状态');
+    }
+
+    if (device.battery < 10) {
+      recommendations.push('电量严重不足，请立即充电或更换电池');
+    } else if (device.battery < 20) {
+      recommendations.push('电量偏低，建议尽快充电');
+    }
+
+    if (device.temperature > 45) {
+      recommendations.push('温度过高，存在过热风险，请检查设备散热');
+    } else if (device.temperature > 38) {
+      recommendations.push('温度偏高，建议检查设备运行环境');
+    }
+
+    if (healthScore < 40) {
+      recommendations.push('设备健康状态差，建议优先巡检');
+    } else if (healthScore < 60) {
+      recommendations.push('设备健康状态一般，建议近期安排巡检');
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push('设备运行正常，继续保持观察');
+    }
+
+    return recommendations;
+  }
+
+  function getDeviceAlertsCount(deviceId: string): number {
+    return alerts.value.filter(a => a.deviceId === deviceId && !a.acknowledged).length;
+  }
+
+  function getLastAbnormal(deviceId: string): { time: string; type: AlertType } | null {
+    const deviceAlerts = alerts.value
+      .filter(a => a.deviceId === deviceId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    if (deviceAlerts.length > 0) {
+      return { time: deviceAlerts[0].timestamp, type: deviceAlerts[0].type };
+    }
+    return null;
+  }
+
+  function calculateOnlineHours(history: HealthDataPoint[]): { online: number; offline: number } {
+    const onlinePoints = history.filter(p => p.isOnline).length;
+    const totalPoints = history.length;
+    const totalHours = totalPoints * 0.5;
+    return {
+      online: Math.round((onlinePoints / totalPoints) * totalHours * 10) / 10,
+      offline: Math.round(((totalPoints - onlinePoints) / totalPoints) * totalHours * 10) / 10
+    };
+  }
+
+  const deviceHealthList = computed<DeviceHealth[]>(() => {
+    const healthData = devices.value.map((device) => {
+      const historyData = generateHealthHistory(device);
+      const healthScore = calculateHealthScore(device);
+      const healthTrend = calculateHealthTrend(historyData);
+      const recommendations = generateRecommendations(device, healthScore);
+      const alertCount = getDeviceAlertsCount(device.id);
+      const lastAbnormal = getLastAbnormal(device.id);
+      const { online, offline } = calculateOnlineHours(historyData);
+
+      return {
+        deviceId: device.id,
+        deviceName: device.name,
+        healthScore,
+        batteryLevel: device.battery,
+        temperatureLevel: device.temperature,
+        onlineHours: online,
+        offlineHours: offline,
+        alertCount,
+        healthTrend,
+        lastAbnormalTime: lastAbnormal?.time,
+        lastAbnormalType: lastAbnormal?.type,
+        priorityRank: 0,
+        recommendations,
+        historyData
+      };
+    });
+
+    healthData.sort((a, b) => {
+      if (a.healthScore !== b.healthScore) {
+        return a.healthScore - b.healthScore;
+      }
+      if (a.alertCount !== b.alertCount) {
+        return b.alertCount - a.alertCount;
+      }
+      return a.batteryLevel - b.batteryLevel;
+    });
+
+    return healthData.map((h, idx) => ({ ...h, priorityRank: idx + 1 }));
+  });
+
+  const priorityInspectionList = computed(() => {
+    return deviceHealthList.value.filter(h => h.healthScore < 60);
+  });
+
+  const healthSummary = computed<HealthSummary>(() => {
+    const list = deviceHealthList.value;
+    if (list.length === 0) {
+      return {
+        avgHealthScore: 0,
+        totalAlertCount: 0,
+        avgOnlineRate: 0,
+        avgBatteryLevel: 0,
+        highPriorityCount: 0,
+        mediumPriorityCount: 0,
+        lowPriorityCount: 0
+      };
+    }
+
+    const avgHealthScore = Math.round(list.reduce((sum, h) => sum + h.healthScore, 0) / list.length);
+    const totalAlertCount = list.reduce((sum, h) => sum + h.alertCount, 0);
+    const avgOnlineRate = Math.round((list.reduce((sum, h) => sum + (h.onlineHours / (h.onlineHours + h.offlineHours)), 0) / list.length) * 100);
+    const avgBatteryLevel = Math.round(list.reduce((sum, h) => sum + h.batteryLevel, 0) / list.length);
+
+    const highPriorityCount = list.filter(h => h.healthScore < 40).length;
+    const mediumPriorityCount = list.filter(h => h.healthScore >= 40 && h.healthScore < 70).length;
+    const lowPriorityCount = list.filter(h => h.healthScore >= 70).length;
+
+    return {
+      avgHealthScore,
+      totalAlertCount,
+      avgOnlineRate,
+      avgBatteryLevel,
+      highPriorityCount,
+      mediumPriorityCount,
+      lowPriorityCount
+    };
+  });
+
+  const recentAbnormalRecords = computed(() => {
+    return [...alerts.value]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 20);
+  });
+
+  function getDeviceHealth(deviceId: string): DeviceHealth | undefined {
+    return deviceHealthList.value.find(h => h.deviceId === deviceId);
+  }
+
   return {
     devices, fences, alerts, selectedFenceId, editMode, highlightedDeviceId,
     isRegisteringDevice, registrationLocation, groups,
@@ -642,7 +868,8 @@ export const useIotStore = defineStore('iot', () => {
     playbackStartTime, playbackEndTime, playbackCurrentIndex,
     isPlaying, playbackSpeed, showTrack, showStayPoints, showBreachEvents,
     playbackCurrentPoint, playbackProgress, playbackCurrentTime,
-    getDeviceById, getFenceById, getGroupById,
+    deviceHealthList, priorityInspectionList, healthSummary, recentAbnormalRecords,
+    getDeviceById, getFenceById, getGroupById, getDeviceHealth,
     acknowledgeAlert, batchAcknowledgeAlerts, acknowledgeAllAlerts,
     setHighlightedDevice, addAlert, generateMockAlert,
     startMockAlertStream, stopMockAlertStream,

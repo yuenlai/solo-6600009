@@ -96,3 +96,37 @@ export interface TrackData {
   totalDistance: number;
   totalDuration: number;
 }
+
+export interface HealthDataPoint {
+  timestamp: string;
+  battery: number;
+  temperature: number;
+  isOnline: boolean;
+}
+
+export interface DeviceHealth {
+  deviceId: string;
+  deviceName: string;
+  healthScore: number;
+  batteryLevel: number;
+  temperatureLevel: number;
+  onlineHours: number;
+  offlineHours: number;
+  alertCount: number;
+  healthTrend: 'improving' | 'stable' | 'declining';
+  lastAbnormalTime?: string;
+  lastAbnormalType?: AlertType;
+  priorityRank: number;
+  recommendations: string[];
+  historyData: HealthDataPoint[];
+}
+
+export interface HealthSummary {
+  avgHealthScore: number;
+  totalAlertCount: number;
+  avgOnlineRate: number;
+  avgBatteryLevel: number;
+  highPriorityCount: number;
+  mediumPriorityCount: number;
+  lowPriorityCount: number;
+}
